@@ -2,8 +2,28 @@ import os
 import httpx
 import json
 import re
+import time
+import logging
+from pathlib import Path
 from typing import Optional, Dict, Any, Union, NoReturn
 from dataclasses import dataclass
+
+logger = logging.getLogger(__name__)
+
+def get_payload_dir() -> Path:
+    """Get canonical directory for storing AI request/response payloads."""
+    env_dir = (
+        os.getenv("GEMINI_PAYLOAD_DIR")
+        or os.getenv("GEMINI_RESPONSE_DIR")
+        or os.getenv("AI_PAYLOAD_DIR")
+        or os.getenv("AI_RESPONSE_DIR")
+        or os.getenv("PAYLOAD_DIR")
+    )
+    if env_dir:
+        return Path(env_dir)
+
+    default_dir = Path("/app/payloads") if os.path.exists("/app") and os.path.isdir("/app") else Path("payloads")
+    return default_dir
 
 @dataclass
 class ProviderConfig:
@@ -53,6 +73,22 @@ class AIProvider:
         self.base_url = base_url
         self.client = httpx.AsyncClient()
     
+    def _save_payload(self, payload: Dict[str, Any], timestamp: int, prefix: str = "google_ai_payload") -> Path:
+        """Save AI payload to canonical payload directory with defensive auto-creation."""
+        payload_dir = get_payload_dir()
+        try:
+            payload_dir.mkdir(parents=True, exist_ok=True)
+            payload_file = payload_dir / f"{prefix}_{timestamp}.json"
+            with open(payload_file, 'w', encoding='utf-8') as f:
+                json.dump(payload, f, indent=2)
+            return payload_file
+        except Exception as e:
+            provider_name = "Google AI" if self.provider_type == "google" else self.provider_type.title()
+            error_msg = f"{provider_name} error saving payload to '{payload_dir}': {str(e)}"
+            print(f"⚠️ {error_msg}")
+            logger.warning(error_msg)
+            raise IOError(error_msg) from e
+
     async def generate(self, system_prompt: str, user_prompt: str, max_tokens: int = 16000, temperature: float = 0.7) -> str:
         """Send chat completion request to configured AI provider"""
         
@@ -181,8 +217,6 @@ class AIProvider:
         headers = {"Content-Type": "application/json"}
 
         # Debug: Save payload to file for inspection
-        import json
-        import time
         timestamp = int(time.time())
 
         # Add debug info to payload
@@ -202,10 +236,11 @@ class AIProvider:
             "payload": payload
         }
 
-        payload_file = f"payloads/google_ai_payload_{timestamp}.json"
-        with open(payload_file, 'w') as f:
-            json.dump(payload, f, indent=2)
-        print(f"📄 Saved payload to {payload_file} (prompt: ~{len(combined_prompt)//4} tokens)")
+        try:
+            payload_file = self._save_payload(payload, timestamp)
+            print(f"📄 Saved payload to {payload_file} (prompt: ~{len(combined_prompt)//4} tokens)")
+        except Exception as e:
+            logger.warning(f"Failed to save Google AI debug payload: {e}")
 
         try:
             response = await self.client.post(

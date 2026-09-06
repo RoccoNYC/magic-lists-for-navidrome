@@ -175,3 +175,6 @@ debug_payloads/
 /ref-docs
 /ref-docs/*
 /payloads
+/payloads/*
+/responses
+/responses/*
