@@ -19,7 +19,7 @@ COPY frontend/ ./frontend/
 COPY recipes/ ./recipes/
 
 # Create database directory and set permissions
-RUN mkdir -p /app/data && chmod 755 /app/data
+RUN mkdir -p /app/data /app/payloads && chmod 755 /app/data /app/payloads
 
 # Create non-root user for security
 RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
@@ -31,6 +31,7 @@ EXPOSE 8000
 # Set environment variables
 ENV PYTHONPATH=/app
 ENV DATABASE_PATH=/app/data/magiclists.db
+ENV GEMINI_PAYLOAD_DIR=/app/payloads
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
